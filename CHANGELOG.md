@@ -9,4 +9,4 @@
 - Universal build (arm64 + x86_64), macOS 11.0 minimum, built on GitHub Actions (workflow from ELXAR-Two).
   Install and uninstall scripts. Zip contains licences, `SOURCE.txt` and the change list.
 - Automatic plugin test (`tools/plugin_test`): 23 checks, run on Apple silicon and, through Rosetta, on Intel.
-- Result: pending (test in Logic on the M4 Mac mini).
+- Result: passed on Nov 11, 2026 in Logic 11.2 on the M4 Mac mini (macOS Tahoe). All 8 checks OK: build downloaded and installed, plugin appears under Audio FX > Audio Units > particledots > Iro-x and loads, audio sounds unchanged, window shows "Iro-x", "Version 0.1.0" and the unofficial notice, loads again after saving and reopening the project, uninstall removes it. Intel Mac not tested (not requested).

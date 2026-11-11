@@ -8,7 +8,7 @@ Iro-x is an effect: it processes the audio of a Logic track. It makes no sound b
 
 ## Status
 Version 0.1.0, Milestone 0 (empty effect): audio passes through unchanged, the window is a placeholder, the Iroi
-source is imported unmodified. Not yet tested in Logic (see Test history). Milestones 1 and 2 add the effects.
+source is imported unmodified. Tested in Logic on the M4 Mac mini: passed (see Test history). Milestones 1 and 2 add the effects.
 
 ## Install
 1. Download `Iro-x-macOS` from the latest run's Artifacts (GitHub, Actions tab) and unzip it.
@@ -37,4 +37,5 @@ input detection are not copied; Logic automation, Logic's tempo and the internal
 
 ## Test history
 - Milestone 0, Nov 10, 2026: automatic plugin test passes (23 checks: effect type, stereo and mono layouts, audio
-  unchanged at 44.1, 48 and 96 kHz, saving and loading, window drawn). Test in Logic on the M4 Mac mini: pending.
+  unchanged at 44.1, 48 and 96 kHz, saving and loading, window drawn). 
+- Milestone 0, Nov 11, 2026: test in Logic 11.2 on the M4 Mac mini (macOS Tahoe): passed, 8 of 8 checks (install, appears and loads under Audio FX, audio unchanged, window text correct, survives save and reopen, uninstall removes it). Intel Mac not tested.
