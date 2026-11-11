@@ -18,7 +18,7 @@
 - Tests: engine test now has host tempo (modulation rate, echo time, song position, jumps, extreme tempos) and tail
   sections and flushes denormal numbers like the plugin does (66 checks); plugin test has 70 checks (host tempo, randomiser,
   Randomise parameter, tail).
-- Result: not yet tested in Logic.
+- Result: passed in Logic on both Macs, Nov 11, 2026 (M4 Mac mini with Logic 11.2, and the Intel Mac): all 20 checks, nothing heard wrong. Tail with Bounce in Place: about 7.2 s at Spacetime 50 %, about 12.4 s at 59 % (longer settings ring past the reported 12 s, as documented). Sample rate tested: 44.1 kHz.
 
 ## 0.2.0: Milestone 1 (the effects run)
 - The Iroi engine (filter + VCA, resonator, echo, ambience, modulation) processes the track's audio. Stereo in and out,
