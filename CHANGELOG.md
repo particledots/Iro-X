@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.0.0: Milestone 2 (the finished plugin)
+- Logic's tempo: the module's sync jack is replaced by a clock made from Logic's tempo and song position (one pulse
+  per quarter note). The modulation speed, the echo times and the auto-pan follow it, also after a jump or loop and while
+  Logic is stopped. No host tempo: the firmware's internal clock (60 BPM). Clock range 40 to 300 BPM.
+- Tail length reported to Logic: 12 s (measured with the engine test, section 6). Settings that ring on much longer or
+  for ever by design are listed in the README and are not covered.
+- Randomise: the button in the window and a new automatable parameter "Randomise" (added at the END of the parameter
+  list; nothing saved or automated before it moves). It moves the ten controls the firmware randomises, each by up to its
+  Rnd amount, with the firmware's own arithmetic, inside change gestures so Logic can record it. Opening a project does not
+  randomise. Not copied: the long-press glide.
+- Final window: dark, one colour per section, new faders, Mod and Rnd bars, Randomise button, tempo line, notice about
+  Befaco and Mutable Instruments in the footer. The faders still show only your settings (decided).
+- Licence check: the Mutable Instruments code adapted inside the Iroi firmware (stmlib, Rings, Plaits) is MIT-licensed;
+  the notice is in `THIRD-PARTY-LICENSES.txt`. No change to the firmware files. The workflow checks that the notice is in
+  the download.
+- Tests: engine test now has host tempo (modulation rate, echo time, song position, jumps, extreme tempos) and tail
+  sections and flushes denormal numbers like the plugin does (66 checks); plugin test has 70 checks (host tempo, randomiser,
+  Randomise parameter, tail).
+- Result: not yet tested in Logic.
+
 ## 0.2.0: Milestone 1 (the effects run)
 - The Iroi engine (filter + VCA, resonator, echo, ambience, modulation) processes the track's audio. Stereo in and out,
   mono accepted. Works at 44.1, 48 and 96 kHz through a resampler; the engine itself runs at 48 kHz in 32-sample blocks.

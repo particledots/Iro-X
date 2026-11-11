@@ -163,6 +163,8 @@ jobs:
           TXT
           [ -x dist/Install-Iro-x.command ] || { echo "::error::PACKAGE missing Install-Iro-x.command"; exit 1; }
           [ -x dist/Uninstall-Iro-x.command ] || { echo "::error::PACKAGE missing Uninstall-Iro-x.command"; exit 1; }
+          # The Mutable Instruments (MIT) notice must be in the download.
+          grep -q "Permission is hereby granted" dist/THIRD-PARTY-LICENSES.txt || { echo "::error::PACKAGE THIRD-PARTY-LICENSES.txt lacks the MIT notice for the Mutable Instruments code"; exit 1; }
           for f in LICENSE THIRD-PARTY-LICENSES.txt SOURCE-Iroi-firmware.txt CHANGES-to-Iroi-firmware.md SOURCE-OwlProgram.txt LICENSE-OwlProgram.txt SOURCE.txt README.md; do [ -s "dist/$f" ] || { echo "::error::PACKAGE missing $f"; exit 1; }; done
           ls -la dist
           ditto -c -k --keepParent dist Iro-x-macOS.zip

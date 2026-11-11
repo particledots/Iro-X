@@ -2,15 +2,44 @@ Iro-x third-party components
 
 1. Iroi firmware (third_party/iroi-firmware)
    Befaco, https://github.com/Befaco/Iroi, GNU GPL version 3 (see third_party/iroi-firmware/LICENSE).
-   Imported at the commit named in third_party/iroi-firmware/SOURCE.txt. Milestone 1 changed two small places (both
-   bug fixes, marked "Iro-x change" in the file and explained in third_party/iroi-firmware/IROX-CHANGES.md); every other
-   file is a byte-for-byte copy, which the build checks file by file.
+   Imported at the commit named in third_party/iroi-firmware/SOURCE.txt. Two small places were changed in Milestone 1
+   (both bug fixes, marked "Iro-x change" in the file and explained in third_party/iroi-firmware/IROX-CHANGES.md);
+   Milestone 2 changed nothing in it. Every other file is a byte-for-byte copy, which the build checks file by file.
    Iro-x is an unofficial port. It is not made, approved or supported by Befaco. The Befaco panel design and artwork
    are not used. The Iroi README names Oneiroi (Roberto Noris, https://github.com/hirnlego) as its parent design.
-   The Iroi source itself says that parts are ported or adapted from Emilie Gillet's (Mutable Instruments) stmlib,
-   Plaits, Rings and eurorack code (comments in Commons.h, Limiter.h and ParamController.h). Those notices stay in the
-   files, which are shipped in the source. The licence of that Mutable Instruments code is still to be checked in
-   Milestone 2 (not verified yet, so not claimed here).
+   The Iroi source itself says that parts are ported or adapted from Mutable Instruments code by Emilie Gillet (comments
+   in Commons.h "taken from pichenettes' stmlib" and "adapted from code found in the eurorack repo", Limiter.h "from
+   Rings", ParamController.h "from Plaits"). Those comments stay in the files, which are shipped in the source.
+   That code is covered in 1b.
+
+1b. Mutable Instruments code (stmlib, Rings, Plaits; adapted inside the Iroi firmware)
+   Emilie Gillet / Mutable Instruments, https://github.com/pichenettes/eurorack and its stmlib folder.
+   Licence: MIT (the code of the STM32F projects, which include Rings and Plaits; Mutable Instruments states this in the
+   repository's README and on the module's "open source" pages, and the stmlib source files carry the MIT permission text
+   in their headers). Checked in Milestone 2 from those public statements; the Iroi source copies carry no licence header
+   of their own for the adapted parts, so the notice is given here, as the MIT licence requires:
+
+     Copyright (c) Emilie Gillet, as stated in the headers of the original files (some older files carry an earlier
+     form of her name).
+
+     Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+     documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+     the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and
+     to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+     The above copyright notice and this permission notice shall be included in all copies or substantial portions of
+     the Software.
+
+     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+     THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+     AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+     TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+     SOFTWARE.
+
+   MIT code may be used inside a GPL-3.0 program. "Mutable Instruments" is a registered trademark; its guidelines for
+   derivative works ask that the name is not used for derivatives. Iro-x does not use it as a name; the window and the
+   README say that Iro-x is not made, approved or supported by Mutable Instruments, and name them only to credit the code.
+   Not covered by this notice and not used: the Mutable Instruments hardware designs and panel art (Creative Commons).
 
 1a. OwlProgram LibSource (third_party/owlprogram)
    Rebel Technology, https://github.com/RebelTechnology/OwlProgram, GNU GPL version 3 (third_party/owlprogram/LICENSE).

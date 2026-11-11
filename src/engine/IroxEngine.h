@@ -54,10 +54,21 @@ struct EngineParams
     float modSpeed = 0.5f;
     float modType = 0.0f;                // 0 chaos, 1/6 sine, 2/6 ramp, 3/6 saw, 4/6 square, 5/6 random, 1 envelope
 
-    // Random amounts (stored for the randomiser, which arrives in Milestone 2; no effect on the sound yet)
+    // Random amounts (how far the randomiser button moves each control; used by randomiseParameters in Parameters.h,
+    // they do not change the sound on their own)
     float filterCutoffRnd = 0.5f, filterResonanceRnd = 0.5f, resonatorTuneRnd = 0.5f, resonatorFeedbackRnd = 0.5f;
     float echoRepeatsRnd = 0.5f, echoDensityRnd = 0.5f, ambienceDecayRnd = 0.5f, ambienceSpacetimeRnd = 0.5f;
     float modLevelRnd = 0.5f, modSpeedRnd = 0.5f;
+};
+
+// What the host (Logic) says about tempo and transport. bpm <= 0 means "no tempo known": the engine then runs on the
+// firmware's own internal clock (60 BPM), as the module does with nothing patched into its sync input.
+struct Transport
+{
+    double bpm = 0.0;
+    bool hasPpq = false;       // ppq = position in quarter notes at the start of the host block
+    double ppq = 0.0;
+    bool playing = false;
 };
 
 // One Iroi effects engine. Not thread safe: one thread at a time per object. Every object has its own state, so
@@ -71,11 +82,15 @@ public:
     Engine& operator= (const Engine&) = delete;
 
     void setParams (const EngineParams& p);
+    // Logic's tempo and transport. Replaces the module's sync jack: one clock pulse per quarter note (see IroxEngine.cpp).
+    void setTransport (const Transport& t);
     // Processes exactly kEngineBlockSize samples in place (48 kHz).
     void processBlock (float* left, float* right);
 
     // The current modulation value (about -1..1), for the window.
     float modulationValue() const;
+    // Position inside the current quarter note (0..1) of the clock that follows Logic's tempo; for tests.
+    double beatPhase() const;
 
 private:
     struct Impl;

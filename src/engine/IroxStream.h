@@ -41,6 +41,8 @@ public:
     // Delay from input to output in host samples (what to report to the host).
     int latencySamples() const { return latency_; }
     void setParams (const EngineParams& p, float inputGainDb, float outputGainDb);
+    // Logic's tempo and transport, once per host block (before process).
+    void setTransport (const Transport& t) { if (engine_) engine_->setTransport (t); }
     // in / out: 2 channels each (a mono input is passed as the same pointer twice). In place is allowed.
     void process (const float* inL, const float* inR, float* outL, float* outR, int n);
     // Tests only: skip the engine (the audio then only goes through the resamplers and the block FIFO).
@@ -50,6 +52,7 @@ public:
     // Peak and count of non-finite samples the engine produced (they are replaced by 0).
     int nonFiniteCount() const { return nonFinite_; }
     float modulationValue() const { return engine_ ? engine_->modulationValue() : 0.f; }
+    double beatPhase() const { return engine_ ? engine_->beatPhase() : 0.0; }
 
 private:
     struct Fifo

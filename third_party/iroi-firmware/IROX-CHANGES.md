@@ -24,3 +24,8 @@ the commit named in SOURCE.txt (the build checks this file by file).
    for one sample in every 1468 (when the write position is 0) is the memory just before the buffer: a garbage value
    in the audio once per cycle at the lowest comb pitches. With the change that read gives the oldest sample in the
    buffer. Everything inside the buffer is read exactly as before.
+
+## Milestone 2 (2026-11-11)
+No changes to the firmware files. Tempo sync, the randomiser and the tail length are done in Iro-x's own code
+(src/engine/IroxEngine.cpp, src/Parameters.h), which drives the firmware's Clock and PatchCtrls from outside, as the
+module's sync jack and Randomize routine would.

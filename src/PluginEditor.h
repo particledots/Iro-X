@@ -4,9 +4,10 @@
 #include <memory>
 #include <vector>
 
-// Milestone 1: a rough but complete window. Every control is a plain slider or list, grouped by section as in the
-// approved mock-up. Styling comes in Milestone 2.
-class IroxEditor : public juce::AudioProcessorEditor
+// The window: five coloured sections as in the approved mock-up, faders with their Mod and Rnd amounts, the Randomise
+// button, Input and Output level, window size, and a line showing the tempo Logic gives the plugin.
+class IroxEditor : public juce::AudioProcessorEditor,
+                   private juce::Timer
 {
 public:
     explicit IroxEditor (IroxProcessor&);
@@ -25,6 +26,7 @@ private:
     void addFader (int section, const juce::String& name, const char* id, const char* modId, const char* rndId, bool isType = false);
     void paintBoard (juce::Graphics&);
     void layoutBoard();
+    void timerCallback() override;
 
     // The whole window content is drawn on a fixed 1180 x 560 board that is scaled to the window size.
     struct Board : juce::Component
@@ -36,8 +38,8 @@ private:
     IroxProcessor& proc;
     std::vector<std::unique_ptr<Section>> sections;
 
-    juce::Label titleLabel, versionLabel, inLabel, outLabel, sizeLabel, footer;
-    juce::TextButton randomise { "Randomise (Milestone 2)" };
+    juce::Label titleLabel, versionLabel, tempoLabel, inLabel, outLabel, sizeLabel, footer;
+    juce::TextButton randomise { "Randomise" };
     juce::Slider inputLevel, outputLevel;
     juce::ComboBox sizeBox;
     // declared last so they are destroyed first, before the controls they are attached to

@@ -14,6 +14,9 @@
 #include <vector>
 #include <algorithm>
 #include "IroxStream.h"
+#if defined(__SSE__)
+#include <xmmintrin.h>
+#endif
 
 using namespace irox;
 
@@ -342,14 +345,223 @@ static void testInstances()
     check (std::memcmp (ref.l.data(), out[2].l.data(), ref.l.size() * sizeof (float)) != 0, "instance 3 with other settings sounds different");
 }
 
+
+// ---------------------------------------------------------------------------------------------------------------
+// Runs the stream in 480-sample host blocks, telling it the tempo (and song position) before every block.
+static Audio runTempo (Stream& st, const Audio& in, double bpm, bool playing, double ppqStart, bool hasPpq, int block, std::vector<double>* phases = nullptr)
+{
+    Audio out; out.rate = in.rate; out.l.resize (in.size()); out.r.resize (in.size());
+    double ppq = ppqStart;
+    for (size_t pos = 0; pos < in.size(); pos += (size_t) block)
+    {
+        const int n = (int) std::min<size_t> ((size_t) block, in.size() - pos);
+        Transport t; t.bpm = bpm; t.playing = playing; t.hasPpq = hasPpq; t.ppq = ppq;
+        st.setTransport (t);
+        st.process (in.l.data() + pos, in.r.data() + pos, out.l.data() + pos, out.r.data() + pos, n);
+        if (phases) phases->push_back (st.beatPhase());
+        if (playing) ppq += bpm / 60.0 * (double) n / in.rate;
+    }
+    return out;
+}
+
+// Modulation rate in Hz measured from the modulation value (upward crossings of its mean).
+static double modulationHz (double bpm, bool withTempo, double rate = 48000.0)
+{
+    Stream st; st.prepare (rate, 1024);
+    EngineParams p = base(); p.modLevel = 1.f; p.modSpeed = 0.5f; p.modType = 1.f / 6; st.setParams (p, 0.f, 0.f);   // sine, speed at the centre = one cycle per beat
+    const int block = 480; const double seconds = 40.0;
+    auto in = makeNoise (rate, seconds, 0.1f);
+    std::vector<float> m;
+    for (size_t pos = 0; pos + block <= in.size(); pos += (size_t) block)
+    {
+        std::vector<float> o1 (block), o2 (block);
+        if (withTempo) { Transport t; t.bpm = bpm; st.setTransport (t); }
+        st.process (in.l.data() + pos, in.r.data() + pos, o1.data(), o2.data(), block);
+        m.push_back (st.modulationValue());
+    }
+    // skip the first 10 s, count rising crossings of the mean
+    const size_t from = (size_t) (10.0 * rate / block);
+    double mean = 0; for (size_t i = from; i < m.size(); ++i) mean += m[i]; mean /= (double) (m.size() - from);
+    int cross = 0; size_t first = 0, last = 0;
+    for (size_t i = from + 1; i < m.size(); ++i)
+        if (m[i - 1] < mean && m[i] >= mean) { if (cross == 0) first = i; last = i; ++cross; }
+    if (cross < 3) return 0.0;
+    return (double) (cross - 1) / (((double) (last - first)) * block / rate);
+}
+
+static double firstEchoSeconds (double bpm, bool withTempo)
+{
+    const double rate = 48000.0;
+    Stream st; st.prepare (rate, 1024);
+    EngineParams p = base(); p.echoLevel = 1.f; p.echoRepeats = 0.3f; p.echoDensity = 0.5f; st.setParams (p, 0.f, 0.f);
+    auto in = makeSilence (rate, 6.0);
+    // let the clock settle for 3 s, then one click
+    const size_t clickAt = (size_t) (3.0 * rate);
+    in.l[clickAt] = in.r[clickAt] = 0.8f;
+    Audio out = withTempo ? runTempo (st, in, bpm, false, 0.0, false, 480) : run (st, in, { 480 });
+    // time of the first sample after the click that is louder than 3 % of the click (the dry click itself is at +latency)
+    const size_t lat = (size_t) st.latencySamples();
+    for (size_t i = clickAt + lat + 2000; i < out.size(); ++i)
+        if (std::fabs (out.l[i]) > 0.02f) return (double) (i - clickAt - lat) / rate;
+    return -1.0;
+}
+
+static void testTempo()
+{
+    std::printf ("\n== 5. Logic's tempo (the module's sync input) ==\n");
+    const double internalHz = modulationHz (0, false);
+    check (std::fabs (internalHz - 1.0) < 0.05, fmt ("no tempo from the host: modulation runs on the internal clock, %.3f Hz (1 Hz = 60 BPM)", internalHz));
+    for (double bpm : { 60.0, 90.0, 120.0, 150.0, 200.0 })
+    {
+        const double hz = modulationHz (bpm, true);
+        check (std::fabs (hz - bpm / 60.0) < 0.03 * bpm / 60.0 + 0.02, fmt ("host tempo %5.1f BPM: modulation at speed 'one per beat' runs at %.3f Hz (expected %.3f)", bpm, hz, bpm / 60.0));
+    }
+    {   // a rate other than 48 kHz
+        const double hz = modulationHz (110.0, true, 44100.0);
+        check (std::fabs (hz - 110.0 / 60.0) < 0.06, fmt ("44.1 kHz, 110 BPM: modulation %.3f Hz (expected %.3f)", hz, 110.0 / 60.0));
+    }
+    // echo times follow the tempo
+    {
+        const double t60 = firstEchoSeconds (60.0, true), t120 = firstEchoSeconds (120.0, true), t90 = firstEchoSeconds (90.0, true);
+        check (t60 > 0 && t120 > 0, fmt ("echo follows the host tempo: first repeat at %.3f s (60 BPM), %.3f s (90 BPM), %.3f s (120 BPM)", t60, t90, t120));
+        check (t60 > 0 && t120 > 0 && std::fabs (t60 / t120 - 2.0) < 0.15, fmt ("echo time at 60 BPM is %.2f times the time at 120 BPM (expected 2)", t60 / std::max (t120, 1e-9)));
+    }
+    // song position: the clock follows the beats of the song
+    {
+        const double rate = 48000.0;
+        Stream st; st.prepare (rate, 1024); st.setParams (base(), 0.f, 0.f);
+        auto in = makeNoise (rate, 4.0, 0.1f);
+        std::vector<double> ph;
+        runTempo (st, in, 120.0, true, 3.7, true, 480, &ph);
+        // 4 s at 120 BPM = 8 beats; ppq at the end is 3.7 + 8 - (the last block's length) -> compare phase after the last block
+        const double endPpq = 3.7 + 120.0 / 60.0 * 4.0 - 120.0 / 60.0 * 32.0 / rate;      // end of the last block, minus the engine's 32-sample delay
+        double d = ph.back() - (endPpq - std::floor (endPpq)); d -= std::floor (d + 0.5);
+        check (std::fabs (d) < 0.01, fmt ("playing from beat 3.7: the clock stays on the beat (off by %.4f of a beat)", d));
+        // a jump to another position: the clock follows within one block
+        Stream s2; s2.prepare (rate, 1024); s2.setParams (base(), 0.f, 0.f);
+        Transport t; t.bpm = 100.0; t.playing = true; t.hasPpq = true; t.ppq = 1.0;
+        std::vector<float> a (480, 0.f), b (480, 0.f), o1 (480), o2 (480);
+        for (int i = 0; i < 40; ++i) { t.ppq = 1.0 + i * 100.0 / 60.0 * 480.0 / rate; s2.setTransport (t); s2.process (a.data(), b.data(), o1.data(), o2.data(), 480); }
+        t.ppq = 20.5; s2.setTransport (t); s2.process (a.data(), b.data(), o1.data(), o2.data(), 480);
+        const double jp = s2.beatPhase(); double dj = jp - 0.5; dj -= std::floor (dj + 0.5);
+        check (std::fabs (dj) < 0.06, fmt ("a jump in the song (loop, locate): the clock is back on the beat at once (phase %.3f, song position .5)", jp));
+        // stopped: the clock keeps its tempo
+        Stream s3; s3.prepare (rate, 1024); s3.setParams (base(), 0.f, 0.f);
+        Transport ts; ts.bpm = 120.0; ts.playing = false;
+        double p0 = 0, p1 = 0;
+        for (int i = 0; i < 100; ++i) { s3.setTransport (ts); s3.process (a.data(), b.data(), o1.data(), o2.data(), 480); if (i == 49) p0 = s3.beatPhase(); }
+        p1 = s3.beatPhase();
+        double adv = p1 - p0; adv -= std::floor (adv);
+        // 50 blocks of 480 = 0.5 s = exactly 1 beat at 120 BPM -> phase back at the same place
+        check (std::fabs (adv) < 0.02 || std::fabs (adv - 1.0) < 0.02, fmt ("stopped: the clock keeps running at the tempo (one beat later the phase moved by %.3f)", adv));
+    }
+    // tempo changes and extreme tempos stay safe
+    {
+        const double rate = 48000.0;
+        Stream st; st.prepare (rate, 1024);
+        EngineParams p = base(); p.echoLevel = 0.6f; p.ambienceLevel = 0.5f; p.modLevel = 1.f; p.modType = 0.3f; p.modSpeed = 0.7f; p.ambienceAutoPan = 0.6f; p.echoDensity = 0.7f; p.echoRepeats = 0.9f;
+        st.setParams (p, 0.f, 0.f);
+        Rng g { 99 }; std::vector<float> a (480), b (480), o1 (480), o2 (480); bool ok = true; double pk = 0;
+        for (int i = 0; i < 1500; ++i)
+        {
+            Transport t; t.playing = (i / 200) % 2 == 0; t.hasPpq = (i % 3) != 0; t.ppq = (double) i * 0.31;
+            const float c = g.next();
+            t.bpm = c < 0.1f ? 0.0 : c < 0.2f ? 1.0 : c < 0.3f ? 999.0 : c < 0.4f ? 20.0 + g.next() * 500.0 : 60.0 + 80.0 * std::sin (i * 0.01);
+            st.setTransport (t);
+            for (int k = 0; k < 480; ++k) { a[(size_t) k] = (g.next() - 0.5f) * 0.5f; b[(size_t) k] = a[(size_t) k]; }
+            st.process (a.data(), b.data(), o1.data(), o2.data(), 480);
+            for (int k = 0; k < 480; ++k) pk = std::max (pk, (double) std::fabs (o1[(size_t) k]));
+        }
+        ok = st.nonFiniteCount() == 0 && st.underruns() == 0 && pk < 40.0;
+        check (ok, fmt ("30 s of jumping tempos (0, 1, 20 to 999 BPM), start/stop and jumps: finite, no underruns (peak %.1f)", pk));
+    }
+}
+
+// The plugin runs with denormal numbers flushed to zero (ScopedNoDenormals); the test does the same, otherwise the long
+// decaying tails would take many times longer to compute.
+static void flushDenormals()
+{
+#if defined(__SSE__)
+    _mm_setcsr (_mm_getcsr() | 0x8040);
+#elif defined(__aarch64__)
+    unsigned long fpcr; __asm__ volatile ("mrs %0, fpcr" : "=r" (fpcr)); fpcr |= (1ul << 24); __asm__ volatile ("msr fpcr, %0" :: "r" (fpcr));
+#endif
+}
+
+// How long a short noise burst keeps sounding: time of the last 0.1 s window that is louder than thrDb (dBFS, rms of both
+// channels). Gives up at maxSec (returns maxSec).
+static double tailSeconds (const EngineParams& p, double thrDb, double maxSec)
+{
+    Stream st; st.prepare (48000.0, 480); st.setParams (p, 0.f, 0.f);
+    const double thr = std::pow (10.0, thrDb / 20.0);
+    const size_t total = (size_t) (48000.0 * maxSec);
+    std::vector<float> l (480), r (480), ol (480), orr (480);
+    Rng g { 1 }; std::vector<double> win; double acc = 0; int cnt = 0; const int winLen = 4800;
+    for (size_t pos = 0; pos < total; pos += 480)
+    {
+        for (int i = 0; i < 480; ++i) { float v = 0.f; if (pos + (size_t) i < 24000) v = (g.next() * 2 - 1) * 0.5f; l[(size_t) i] = r[(size_t) i] = v; }
+        st.process (l.data(), r.data(), ol.data(), orr.data(), 480);
+        for (int i = 0; i < 480; ++i)
+        {
+            acc += (double) ol[(size_t) i] * ol[(size_t) i] + (double) orr[(size_t) i] * orr[(size_t) i];
+            if (++cnt == winLen) { win.push_back (std::sqrt (acc / (2.0 * winLen))); acc = 0; cnt = 0; }
+        }
+        const size_t k = win.size();
+        if (k > 60 && pos > 96000)               // 3 s of quiet in a row: finished
+        {
+            bool quiet = true; for (size_t j = k - 30; j < k; ++j) if (win[j] > thr) quiet = false;
+            if (quiet) break;
+        }
+    }
+    long last = -1; for (size_t i = 0; i < win.size(); ++i) if (win[i] > thr) last = (long) i;
+    return last < 0 ? 0.0 : std::min (maxSec, (double) (last + 1) * winLen / 48000.0);
+}
+
+static void testTail()
+{
+    std::printf ("\n== 6. tail: how long the reverb, echo and resonator keep ringing ==\n");
+    constexpr double kThr = -80.0, kMax = 40.0;
+    const double reported = 12.0;      // must equal kTailSeconds in src/Parameters.h (that file needs JUCE, so it is not included here)
+    EngineParams b;
+    // normal settings: the reported tail must cover them
+    struct Case { const char* name; EngineParams p; };
+    std::vector<Case> covered;
+    { EngineParams p = b; p.ambienceLevel = 1.f; p.ambienceDecay = 0.5f; covered.push_back ({ "reverb Decay 0.5, Spacetime 0.5 (the defaults)", p }); }
+    { EngineParams p = b; p.ambienceLevel = 1.f; p.ambienceDecay = 1.f; covered.push_back ({ "reverb Decay full, Spacetime 0.5", p }); }
+    { EngineParams p = b; p.resonatorLevel = 1.f; p.resonatorFeedback = 0.8f; p.resonatorTune = 0.2f; covered.push_back ({ "resonator Feedback 0.8, Tune 0.2", p }); }
+    { EngineParams p = b; p.echoLevel = 1.f; p.echoRepeats = 0.9f; p.echoDensity = 0.f; covered.push_back ({ "echo Repeats 0.9, shortest time", p }); }
+    { EngineParams p = b; p.echoLevel = 1.f; p.echoRepeats = 0.5f; p.echoDensity = 0.5f; covered.push_back ({ "echo Repeats 0.5, middle time", p }); }
+    double worst = 0;
+    for (auto& c : covered)
+    {
+        const double t = tailSeconds (c.p, kThr, kMax);
+        worst = std::max (worst, t);
+        check (t < reported, fmt ("%-46s rings %5.1f s to -80 dB (reported tail %.0f s)", c.name, t, reported));
+    }
+    std::printf ("   (longest of these: %.1f s)\n", worst);
+    // settings that ring much longer or for ever: only listed, not covered by any number
+    const struct { const char* name; EngineParams p; } longer[] = {
+        { "reverb Decay full, Spacetime 0",       [&] { EngineParams p = b; p.ambienceLevel = 1.f; p.ambienceDecay = 1.f; p.ambienceSpacetime = 0.f; return p; }() },
+        { "reverb Decay full, Spacetime 1",       [&] { EngineParams p = b; p.ambienceLevel = 1.f; p.ambienceDecay = 1.f; p.ambienceSpacetime = 1.f; return p; }() },
+        { "echo Repeats 0.9, time 0.5",           [&] { EngineParams p = b; p.echoLevel = 1.f; p.echoRepeats = 0.9f; p.echoDensity = 0.5f; return p; }() },
+        { "echo Repeats 0.97, shortest time",     [&] { EngineParams p = b; p.echoLevel = 1.f; p.echoRepeats = 0.97f; p.echoDensity = 0.f; return p; }() },
+        { "resonator Feedback 0.9, Tune 0.2",     [&] { EngineParams p = b; p.resonatorLevel = 1.f; p.resonatorFeedback = 0.9f; p.resonatorTune = 0.2f; return p; }() },
+    };
+    for (auto& c : longer)
+        std::printf ("   not covered: %-40s rings %s s\n", c.name, tailSeconds (c.p, kThr, kMax) >= kMax ? ">= 40" : fmt ("%.1f", tailSeconds (c.p, kThr, kMax)).c_str());
+}
+
 int main (int argc, char** argv)
 {
+    flushDenormals();
     const std::string outDir = argc > 1 ? argv[1] : "";
     if (! outDir.empty()) { std::string cmd = "mkdir -p '" + outDir + "'"; if (std::system (cmd.c_str()) != 0) return 2; }
     testStream();
     testSections (outDir);
     testFuzz();
     testInstances();
+    testTempo();
+    testTail();
     std::printf ("\n%s\n", failures == 0 ? "RESULT - all engine checks passed" : "RESULT - SOME ENGINE CHECKS FAILED");
     return failures == 0 ? 0 : 1;
 }

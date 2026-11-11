@@ -7,8 +7,15 @@ namespace irox_params
 {
 struct Def { const char* id; const char* name; float def; const char* section; };
 
+// Tail length reported to Logic, in seconds. Measured with tools/engine_test (section 6): the reverb at its longest normal
+// setting rings for 9.6 s (to -80 dB), the resonator at feedback 0.8 for up to 10.6 s (except at the very lowest pitch),
+// the echo at repeats 0.9 for 0.9 s at the shortest time. The firmware also has settings that ring on much longer or
+// hold the sound for ever on purpose (reverb Decay at full with Spacetime at either end, echo Repeats above about 0.95
+// with long times, resonator Feedback above about 0.85): no number covers those.
+constexpr double kTailSeconds = 12.0;
+
 // All 0..1 parameters, in the order they appear in the host's list. "Mod" = how far the internal modulation moves the
-// parameter, "Rnd" = how far the randomiser (Milestone 2) moves it.
+// parameter, "Rnd" = how far the randomiser button moves it.
 inline const Def* floatParams (int& count)
 {
     static const Def defs[] = {
@@ -67,7 +74,54 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         layout.add (std::make_unique<AudioParameterFloat> (ParameterID { d[i].id, 1 }, d[i].name, NormalisableRange<float> (0.f, 1.f), d[i].def));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "input_level", 1 }, "Input Level", NormalisableRange<float> (-24.f, 12.f, 0.1f), 0.f, AudioParameterFloatAttributes().withLabel ("dB")));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "output_level", 1 }, "Output Level", NormalisableRange<float> (-24.f, 12.f, 0.1f), 0.f, AudioParameterFloatAttributes().withLabel ("dB")));
+    // Added in Milestone 2 (at the end, so nothing that was saved or automated before moves): the randomiser button as a
+    // parameter, so Logic can automate it. Going from off to on randomises once; the plugin switches it off again.
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "randomise", 1 }, "Randomise", false));
     return layout;
+}
+
+// The ten controls the randomiser moves (the same ten as the firmware's Randomize), and the Rnd amount of each.
+struct RandomTarget { const char* id; const char* rndId; };
+inline const RandomTarget* randomTargets (int& count)
+{
+    static const RandomTarget t[] = {
+        { "filter_cutoff", "filter_cutoff_rnd" }, { "filter_resonance", "filter_resonance_rnd" },
+        { "resonator_tune", "resonator_tune_rnd" }, { "resonator_feedback", "resonator_feedback_rnd" },
+        { "echo_repeats", "echo_repeats_rnd" }, { "echo_density", "echo_density_rnd" },
+        { "ambience_decay", "ambience_decay_rnd" }, { "ambience_spacetime", "ambience_spacetime_rnd" },
+        { "mod_level", "mod_level_rnd" }, { "mod_speed", "mod_speed_rnd" } };
+    count = (int) (sizeof (t) / sizeof (t[0]));
+    return t;
+}
+
+// The firmware's randomiser (LockableParam::Randomize and Wrap in the Iroi source), one control at a time: move the
+// value by a random amount of up to its Rnd amount, in a random direction (the direction is flipped at the ends), and
+// fold it back into 0..1 if it would leave. r1 and r2 are random numbers between 0 and 1.
+inline float randomisedValue (float value, float amount, float r1, float r2)
+{
+    float sign = r2 < 0.5f ? 1.f : -1.f;
+    if (sign < 0.f && value == 0.f) sign = 1.f;
+    else if (sign > 0.f && value == 1.f) sign = -1.f;
+    float v = value + r1 * amount * sign;
+    while (v < 0.f) v = -v;
+    while (v > 1.f) v = 1.f - (v - 1.f);
+    return v;
+}
+
+// Message thread only. Each control is moved inside a change gesture, so Logic can record it as automation.
+inline void randomiseParameters (juce::AudioProcessorValueTreeState& s, juce::Random& rng)
+{
+    int n = 0; const RandomTarget* t = randomTargets (n);
+    for (int i = 0; i < n; ++i)
+    {
+        auto* p = s.getParameter (t[i].id);
+        const float amount = s.getRawParameterValue (t[i].rndId)->load();
+        if (p == nullptr) continue;
+        const float r1 = rng.nextFloat(), r2 = rng.nextFloat();
+        p->beginChangeGesture();
+        p->setValueNotifyingHost (randomisedValue (p->getValue(), amount, r1, r2));
+        p->endChangeGesture();
+    }
 }
 
 inline irox::EngineParams toEngine (const juce::AudioProcessorValueTreeState& s)

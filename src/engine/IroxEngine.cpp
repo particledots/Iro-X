@@ -7,6 +7,8 @@
 #include "owl_runtime.h"
 #include "Iroi.h"
 #include "Clock.h"
+#include <algorithm>
+#include <cmath>
 
 namespace irox
 {
@@ -21,6 +23,16 @@ struct Engine::Impl
     AudioBuffer* buffer = nullptr;
     float cutoffPot = 0.f;
     bool firstBlock = true;
+
+    // Host tempo -> the firmware's sync input. The module has a sync jack: a pulse on it makes the firmware's clock
+    // (Clock.h) follow the pulse rate, and the modulation speed, the echo times and the auto-pan are then tied to
+    // it. Here the pulses are made from Logic's tempo: one per quarter note, each one block (32 samples) long.
+    Transport transport;
+    bool transportPending = false;
+    bool wasPlaying = false;
+    double beatPhase = 0.0;        // 0..1, position inside the current quarter note
+    bool pulseHigh = false;
+    static constexpr double kMinBpm = 40.0, kMaxBpm = 300.0;   // the firmware drops an external clock slower than 2 s per pulse
 
     Impl()
     {
@@ -127,10 +139,51 @@ struct Engine::Impl
         ctrls.filterCutoff = cutoffPot;
     }
 
+    // Called once per block of 32 samples, before the clock runs.
+    void feedClock()
+    {
+        if (pulseHigh)                       // the pulse lasts one block
+        {
+            state.syncIn = false;
+            state.tempo->trigger (false);
+            pulseHigh = false;
+        }
+        if (transport.bpm <= 0.0) { beatPhase = 0.0; return; }   // nothing known: internal clock
+
+        const double bpm = std::min (std::max (transport.bpm, kMinBpm), kMaxBpm);
+        const double blocksPerBeat = 60.0 * state.blockRate / bpm;
+
+        bool snapped = false;
+        if (transportPending)
+        {
+            transportPending = false;
+            if (transport.playing && transport.hasPpq)
+            {
+                const double target = transport.ppq - std::floor (transport.ppq);
+                double diff = target - beatPhase; diff -= std::floor (diff + 0.5);       // -0.5 .. 0.5
+                // Follow the song position when playback has just started or jumped; otherwise keep running smoothly.
+                if (! wasPlaying || std::fabs (diff) > 0.03) { beatPhase = target; snapped = true; }
+            }
+            wasPlaying = transport.playing;
+        }
+        if (! snapped) beatPhase += 1.0 / blocksPerBeat;
+
+        if (beatPhase >= 1.0)
+        {
+            beatPhase -= std::floor (beatPhase);
+            state.syncIn = true;
+            state.tempo->trigger (true);
+            // the firmware measures the time between pulses; give it the exact value so the tempo does not jitter
+            state.tempo->setPeriodInSamples ((size_t) std::lround (blocksPerBeat));
+            pulseHigh = true;
+        }
+    }
+
     void process (float* left, float* right)
     {
         applyParams();
         firstBlock = false;
+        feedClock();
         clock->Process();
 
         FloatArray l = buffer->getSamples (LEFT_CHANNEL);
@@ -144,6 +197,8 @@ struct Engine::Impl
 Engine::Engine() : impl (new Impl) {}
 Engine::~Engine() = default;
 void Engine::setParams (const EngineParams& p) { impl->params = p; }
+void Engine::setTransport (const Transport& t) { impl->transport = t; impl->transportPending = true; }
 void Engine::processBlock (float* left, float* right) { impl->process (left, right); }
 float Engine::modulationValue() const { return impl->state.modValue; }
+double Engine::beatPhase() const { return impl->beatPhase; }
 }
