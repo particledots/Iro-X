@@ -67,6 +67,12 @@ public:
 
     inline float readAt(int index)
     {
+        // Iro-x change (see IROX-CHANGES.md, change 2): never read further back than the buffer is long.
+        if (index > s_)
+        {
+            index = s_;
+        }
+
         int r = w_ - index;
         if (r < 0)
         {

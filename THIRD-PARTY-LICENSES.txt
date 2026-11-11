@@ -2,13 +2,22 @@ Iro-x third-party components
 
 1. Iroi firmware (third_party/iroi-firmware)
    Befaco, https://github.com/Befaco/Iroi, GNU GPL version 3 (see third_party/iroi-firmware/LICENSE).
-   Imported at the commit named in third_party/iroi-firmware/SOURCE.txt, UNMODIFIED in Milestone 0. Every later change
-   will be marked "Iro-x change" in the file and listed in third_party/iroi-firmware/IROX-CHANGES.md.
+   Imported at the commit named in third_party/iroi-firmware/SOURCE.txt. Milestone 1 changed two small places (both
+   bug fixes, marked "Iro-x change" in the file and explained in third_party/iroi-firmware/IROX-CHANGES.md); every other
+   file is a byte-for-byte copy, which the build checks file by file.
    Iro-x is an unofficial port. It is not made, approved or supported by Befaco. The Befaco panel design and artwork
    are not used. The Iroi README names Oneiroi (Roberto Noris, https://github.com/hirnlego) as its parent design.
-   Still to be checked in Milestone 1 (not yet verified, so not claimed here): the Iroi source includes headers from
-   Rebel Technology's OpenWare platform (GPL) and code adapted from Mutable Instruments (stmlib, Plaits, Rings).
-   Neither is in Befaco's repository. Their licences and notices will be listed here once they are brought in.
+   The Iroi source itself says that parts are ported or adapted from Emilie Gillet's (Mutable Instruments) stmlib,
+   Plaits, Rings and eurorack code (comments in Commons.h, Limiter.h and ParamController.h). Those notices stay in the
+   files, which are shipped in the source. The licence of that Mutable Instruments code is still to be checked in
+   Milestone 2 (not verified yet, so not claimed here).
+
+1a. OwlProgram LibSource (third_party/owlprogram)
+   Rebel Technology, https://github.com/RebelTechnology/OwlProgram, GNU GPL version 3 (third_party/owlprogram/LICENSE).
+   31 library files (filters, oscillators, arrays, fast maths) copied UNMODIFIED, commit in
+   third_party/owlprogram/SOURCE.txt. The Iroi firmware is written against this library. What the OpenWare platform
+   provides on the module itself (heap, Patch object, random numbers, start-up of the lookup tables) is written new by
+   Iro-x in src/engine/shim/ and is not Rebel Technology code.
 
 2. JUCE 8.0.6 (https://juce.com), downloaded at build time. JUCE is offered under the GNU AGPL version 3 or a paid
    JUCE licence; Iro-x uses the AGPL-3.0 option. GPL-3.0 and AGPL-3.0 code may be combined in one program (section 13

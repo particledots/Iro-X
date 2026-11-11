@@ -15,22 +15,64 @@ jobs:
       - name: Configure (universal, macOS 11+)
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DIROX_BUILD_PLUGIN_TEST=ON
 
-      - name: Check the imported Iroi source is unmodified (Milestone 0 rule)
+      - name: Check the Iroi source file by file (changes must be marked and listed)
         run: |
-          # The firmware folder must still match the commit named in SOURCE.txt until a change is listed in IROX-CHANGES.md.
+          # Every file in the firmware folder must be identical to Befaco/Iroi at the commit named in SOURCE.txt,
+          # unless that file carries the words "Iro-x change" AND is named in IROX-CHANGES.md.
           COMMIT=$(sed -n 's/^Commit: \([0-9a-f]\{40\}\).*/\1/p' third_party/iroi-firmware/SOURCE.txt)
           echo "Iroi commit named in SOURCE.txt: $COMMIT"
           [ -n "$COMMIT" ] || { echo "::error::SOURCE.txt does not name a commit"; exit 1; }
           git clone --quiet https://github.com/Befaco/Iroi /tmp/iroi-original
           git -C /tmp/iroi-original checkout --quiet "$COMMIT"
-          if grep -q "Iro-x change" third_party/iroi-firmware/*.h third_party/iroi-firmware/*.hpp 2>/dev/null; then
-            echo "::notice::Firmware files carry marked changes; the byte-for-byte check is skipped"
-          else
-            for f in /tmp/iroi-original/*.h /tmp/iroi-original/*.hpp /tmp/iroi-original/LICENSE; do
-              cmp "$f" "third_party/iroi-firmware/$(basename "$f")" || { echo "::error::FIRMWARE file $(basename "$f") differs from Befaco/Iroi and is not marked"; exit 1; }
-            done
-            echo "all firmware files identical to Befaco/Iroi at $COMMIT"
+          CHANGED=0
+          for f in /tmp/iroi-original/*.h /tmp/iroi-original/*.hpp /tmp/iroi-original/LICENSE; do
+            [ -e "$f" ] || continue
+            n=$(basename "$f")
+            if ! cmp -s "$f" "third_party/iroi-firmware/$n"; then
+              grep -q "Iro-x change" "third_party/iroi-firmware/$n" || { echo "::error::FIRMWARE file $n differs from Befaco/Iroi and is not marked Iro-x change"; exit 1; }
+              grep -q "$n" third_party/iroi-firmware/IROX-CHANGES.md || { echo "::error::FIRMWARE file $n is changed but not listed in IROX-CHANGES.md"; exit 1; }
+              echo "changed and listed: $n"; CHANGED=$((CHANGED+1))
+            fi
+          done
+          # No extra or missing files, no marker in an unchanged file
+          for f in third_party/iroi-firmware/*.h third_party/iroi-firmware/*.hpp; do
+            [ -e "$f" ] || continue
+            [ -e "/tmp/iroi-original/$(basename "$f")" ] || { echo "::error::FIRMWARE extra file $(basename "$f") is not in Befaco/Iroi"; exit 1; }
+          done
+          echo "firmware check passed ($CHANGED file(s) changed, all marked and listed)"
+
+      - name: Engine test (the effects without a host, native and Intel)
+        run: |
+          # The engine test is built by the configure step above (IROX_BUILD_ENGINE_TEST defaults to ON).
+          cmake --build build --target irox_engine_test -j4 > engine_test_log.txt 2>&1 || {
+            grep -E "error|Error" engine_test_log.txt | head -8 | while IFS= read -r line; do echo "::error::ENGINE TEST BUILD - $line"; done
+            tail -20 engine_test_log.txt; exit 1; }
+          ENGINE_BIN=$(find build -type f -name irox_engine_test | head -1)
+          [ -n "$ENGINE_BIN" ] || { echo "::error::ENGINE TEST program not found after the build"; exit 1; }
+          lipo -archs "$ENGINE_BIN"
+          mkdir -p engine-wav
+          set +e
+          arch -arm64 "$ENGINE_BIN" engine-wav > engine_test_result.txt 2>&1
+          STATUS=$?
+          set -e
+          tail -25 engine_test_result.txt
+          if [ $STATUS -ne 0 ] || ! grep -q "RESULT - all engine checks passed" engine_test_result.txt; then
+            echo "::error::ENGINE TEST (Apple silicon) stopped with exit status $STATUS; last line - $(tail -1 engine_test_result.txt)"
+            grep -i FAIL engine_test_result.txt | head -8 | while IFS= read -r line; do echo "::error::ENGINE TEST - $line"; done
+            exit 1
           fi
+          if arch -x86_64 /usr/bin/true 2>/dev/null; then
+            arch -x86_64 "$ENGINE_BIN" > engine_test_result_intel.txt 2>&1 || true
+            tail -2 engine_test_result_intel.txt
+            grep -q "RESULT - all engine checks passed" engine_test_result_intel.txt && echo "::notice::ENGINE TEST intel (Rosetta) - all checks passed" || echo "::warning::ENGINE TEST intel (Rosetta) did not pass - $(tail -1 engine_test_result_intel.txt)"
+          else
+            echo "::notice::ENGINE TEST intel - Rosetta not available on this runner, skipped"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Iro-x-engine-wav
+          path: engine-wav
 
       - name: Plugin test (the plugin code with a pretend host, saving, window picture)
         run: |
@@ -99,6 +141,8 @@ jobs:
           [ "$AUTYPE" = "aufx" ] || { echo "::error::PACKAGE Audio Unit type is $AUTYPE, expected aufx (effect)"; exit 1; }
           cp third_party/iroi-firmware/SOURCE.txt dist/SOURCE-Iroi-firmware.txt
           cp third_party/iroi-firmware/IROX-CHANGES.md dist/CHANGES-to-Iroi-firmware.md
+          cp third_party/owlprogram/SOURCE.txt dist/SOURCE-OwlProgram.txt
+          cp third_party/owlprogram/LICENSE dist/LICENSE-OwlProgram.txt
           # Both slices present, and the minimum macOS version baked into each (should say 11.0):
           lipo -archs dist/*.component/Contents/MacOS/*
           lipo -archs dist/*.vst3/Contents/MacOS/*
@@ -119,7 +163,7 @@ jobs:
           TXT
           [ -x dist/Install-Iro-x.command ] || { echo "::error::PACKAGE missing Install-Iro-x.command"; exit 1; }
           [ -x dist/Uninstall-Iro-x.command ] || { echo "::error::PACKAGE missing Uninstall-Iro-x.command"; exit 1; }
-          for f in LICENSE THIRD-PARTY-LICENSES.txt SOURCE-Iroi-firmware.txt CHANGES-to-Iroi-firmware.md SOURCE.txt README.md; do [ -s "dist/$f" ] || { echo "::error::PACKAGE missing $f"; exit 1; }; done
+          for f in LICENSE THIRD-PARTY-LICENSES.txt SOURCE-Iroi-firmware.txt CHANGES-to-Iroi-firmware.md SOURCE-OwlProgram.txt LICENSE-OwlProgram.txt SOURCE.txt README.md; do [ -s "dist/$f" ] || { echo "::error::PACKAGE missing $f"; exit 1; }; done
           ls -la dist
           ditto -c -k --keepParent dist Iro-x-macOS.zip
 

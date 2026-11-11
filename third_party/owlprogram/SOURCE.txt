@@ -1,0 +1,22 @@
+OwlProgram LibSource files used by Iro-x
+=========================================
+
+These files are unmodified copies of files from the LibSource folder of Rebel Technology's OwlProgram
+(the program library of the OpenWare platform), which the Befaco Iroi firmware is written against.
+
+Repository : https://github.com/RebelTechnology/OwlProgram
+Commit     : 60f44ab5e0396d504c223f96399d940574e2afad
+Folder     : LibSource/
+Licence    : GNU GPL version 3 (file LICENSE in this folder)
+
+Files copied (names as in the repository):
+  FloatArray.h FloatArray.cpp SimpleArray.h ComplexFloatArray.h ComplexFloatArray.cpp AudioBuffer.h
+  SignalProcessor.h SignalGenerator.h StateVariableFilter.h BiquadFilter.h DcBlockingFilter.h
+  Oscillator.h MorphingOscillator.h NoiseOscillator.h SineOscillator.h RampOscillator.h SquareWaveOscillator.h
+  Interpolator.h SmoothValue.h SimpleValue.h SimpleValue.cpp TapTempo.h
+  basicmaths.h basicmaths.c fastlog.h fastlog.c fastpow.h fastpow.c FastLogTable.h FastPowTable.h message.h
+
+Nothing in this folder has been edited. What OpenWare provides at run time on the hardware and what a computer
+does not have (the Patch class, the heap, message output, the audio buffer object, the random number generator
+and the start-up of the lookup tables) is written new in src/engine/shim/. The build compiles basicmaths.c with
+its random number function renamed so that each thread can use its own generator (see CMakeLists.txt).

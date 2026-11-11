@@ -1,7 +1,9 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "Parameters.h"
+#include "IroxStream.h"
 
-// Iro-x, Milestone 0: an empty audio effect. Audio goes in and comes out unchanged. There is no engine yet.
+// Iro-x, Milestone 1: the Iroi effects engine as an audio effect. Stereo (or mono) in, stereo (or mono) out.
 class IroxProcessor : public juce::AudioProcessor
 {
 public:
@@ -20,7 +22,7 @@ public:
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    // Milestone 0 has no reverb or echo yet, so nothing rings on. Milestone 2 reports the real tail length here.
+    // Milestone 1 reports no tail; Milestone 2 measures the reverb and echo tail and reports it here.
     double getTailLengthSeconds() const override { return 0.0; }
 
     int getNumPrograms() override { return 1; }
@@ -34,6 +36,13 @@ public:
 
     static juce::String versionString() { return IROX_VERSION_STRING; }
 
+    juce::AudioProcessorValueTreeState apvts;
+    irox::Stream& stream() { return stream_; }
+    int underruns() const { return stream_.underruns(); }
+
 private:
+    irox::Stream stream_;
+    std::vector<float> scratch_[4];
+    int maxBlock_ = 0;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (IroxProcessor)
 };

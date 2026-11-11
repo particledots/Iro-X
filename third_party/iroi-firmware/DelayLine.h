@@ -56,6 +56,12 @@ public:
 
     inline float read(float index)
     {
+        // Iro-x change (see IROX-CHANGES.md, change 1): keep the read position inside the buffer. A delay time longer
+        // than the buffer (Ambience with Spacetime fully counter-clockwise) read past the end of the memory.
+        const float maxIndex = (float)(size_ - 2);
+        if (!(index >= 0.f)) index = 0.f;
+        else if (index > maxIndex) index = maxIndex;
+
         size_t idx = (size_t)index;
         float y0 = readAt(idx);
         float y1 = readAt(idx + 1);

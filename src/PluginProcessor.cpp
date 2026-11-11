@@ -4,11 +4,19 @@
 IroxProcessor::IroxProcessor()
     : AudioProcessor (BusesProperties()
                           .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
-                          .withOutput ("Output", juce::AudioChannelSet::stereo(), true))
+                          .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+      apvts (*this, nullptr, "IroxState", irox_params::createLayout())
 {
 }
 
-void IroxProcessor::prepareToPlay (double, int) {}
+void IroxProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+{
+    maxBlock_ = std::max (samplesPerBlock, 512);
+    for (auto& s : scratch_) s.assign ((size_t) maxBlock_, 0.f);
+    stream_.prepare (sampleRate, maxBlock_);
+    stream_.setParams (irox_params::toEngine (apvts), apvts.getRawParameterValue ("input_level")->load(), apvts.getRawParameterValue ("output_level")->load());
+    setLatencySamples (stream_.latencySamples());
+}
 
 // Stereo in, stereo out. A mono Logic track is also accepted (mono in, mono out, or mono in, stereo out).
 bool IroxProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -25,21 +33,38 @@ void IroxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
     juce::ScopedNoDenormals noDenormals;
     const int numIn = getTotalNumInputChannels();
     const int numOut = getTotalNumOutputChannels();
-    const int n = buffer.getNumSamples();
+    const int total = buffer.getNumSamples();
+    if (maxBlock_ == 0) return;     // not prepared
 
-    // Mono in, stereo out: the first input channel is copied to both outputs. Otherwise the buffer already holds
-    // the input and is left as it is (pass-through).
-    if (numIn == 1 && numOut >= 2)
-        for (int ch = 1; ch < numOut; ++ch)
-            buffer.copyFrom (ch, 0, buffer, 0, 0, n);
+    stream_.setParams (irox_params::toEngine (apvts), apvts.getRawParameterValue ("input_level")->load(), apvts.getRawParameterValue ("output_level")->load());
+
+    for (int pos = 0; pos < total; pos += maxBlock_)
+    {
+        const int n = std::min (maxBlock_, total - pos);
+        const float* inL = buffer.getReadPointer (0) + pos;
+        const float* inR = numIn > 1 ? buffer.getReadPointer (1) + pos : inL;
+        // copy the input first: the output goes into the same buffer
+        std::copy (inL, inL + n, scratch_[0].begin());
+        std::copy (inR, inR + n, scratch_[1].begin());
+        stream_.process (scratch_[0].data(), scratch_[1].data(), scratch_[2].data(), scratch_[3].data(), n);
+        if (numOut >= 2)
+        {
+            std::copy (scratch_[2].begin(), scratch_[2].begin() + n, buffer.getWritePointer (0) + pos);
+            std::copy (scratch_[3].begin(), scratch_[3].begin() + n, buffer.getWritePointer (1) + pos);
+        }
+        else
+        {
+            float* o = buffer.getWritePointer (0) + pos;
+            for (int i = 0; i < n; ++i) o[i] = 0.5f * (scratch_[2][(size_t) i] + scratch_[3][(size_t) i]);
+        }
+    }
 }
 
 juce::AudioProcessorEditor* IroxProcessor::createEditor() { return new IroxEditor (*this); }
 
-// Nothing to save yet; only the version is written so that later versions know what they are reading.
 void IroxProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
-    juce::ValueTree state ("IroxState");
+    auto state = apvts.copyState();
     state.setProperty ("version", versionString(), nullptr);
     if (auto xml = state.createXml()) copyXmlToBinary (*xml, dest);
 }
@@ -47,7 +72,8 @@ void IroxProcessor::getStateInformation (juce::MemoryBlock& dest)
 void IroxProcessor::setStateInformation (const void* data, int size)
 {
     if (auto xml = getXmlFromBinary (data, size))
-        juce::ignoreUnused (juce::ValueTree::fromXml (*xml));
+        if (xml->hasTagName (apvts.state.getType()))
+            apvts.replaceState (juce::ValueTree::fromXml (*xml));
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new IroxProcessor(); }
