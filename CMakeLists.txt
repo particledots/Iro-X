@@ -30,6 +30,10 @@ set_source_files_properties(third_party/owlprogram/basicmaths.c PROPERTIES COMPI
 # fast_powf(0, y) turns -infinity into an integer (undefined in C, the same result as on the module's ARM chip in practice).
 # The sanitizer builds of the engine test would stop on it, so that one check is off for that one file.
 set_source_files_properties(third_party/owlprogram/fastpow.c PROPERTIES COMPILE_OPTIONS "-fno-sanitize=float-cast-overflow")
+# macOS has no exp10f (glibc has); the OwlProgram library uses it in its non-ARM fallback. Same maths, written with powf.
+if(APPLE)
+  target_compile_definitions(irox_engine PRIVATE "exp10f(x)=powf(10.0f,(x))")
+endif()
 # Third-party code: no warnings from our flags (the firmware has some harmless ones).
 target_compile_options(irox_engine PRIVATE -w -fvisibility=hidden -fvisibility-inlines-hidden)
 
