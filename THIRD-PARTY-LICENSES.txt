@@ -1,0 +1,30 @@
+Iro-x third-party components
+
+1. Iroi firmware (third_party/iroi-firmware)
+   Befaco, https://github.com/Befaco/Iroi, GNU GPL version 3 (see third_party/iroi-firmware/LICENSE).
+   Imported at the commit named in third_party/iroi-firmware/SOURCE.txt, UNMODIFIED in Milestone 0. Every later change
+   will be marked "Iro-x change" in the file and listed in third_party/iroi-firmware/IROX-CHANGES.md.
+   Iro-x is an unofficial port. It is not made, approved or supported by Befaco. The Befaco panel design and artwork
+   are not used. The Iroi README names Oneiroi (Roberto Noris, https://github.com/hirnlego) as its parent design.
+   Still to be checked in Milestone 1 (not yet verified, so not claimed here): the Iroi source includes headers from
+   Rebel Technology's OpenWare platform (GPL) and code adapted from Mutable Instruments (stmlib, Plaits, Rings).
+   Neither is in Befaco's repository. Their licences and notices will be listed here once they are brought in.
+
+2. JUCE 8.0.6 (https://juce.com), downloaded at build time. JUCE is offered under the GNU AGPL version 3 or a paid
+   JUCE licence; Iro-x uses the AGPL-3.0 option. GPL-3.0 and AGPL-3.0 code may be combined in one program (section 13
+   of both licences). Parts that JUCE brings along and that are, or may be, inside the plugin:
+   - AudioUnitSDK, Apple Inc.: Apache License 2.0
+   - VST3 SDK, Steinberg Media Technologies GmbH: used under its GPL-3.0 option
+   - zlib and pnglib: zlib licence; jpeglib: Independent JPEG Group licence; FLAC and Ogg Vorbis: BSD;
+     HarfBuzz: Old MIT; SheenBidi: Apache License 2.0
+   The licence text of each is in the JUCE source: https://github.com/juce-framework/JUCE/tree/8.0.6
+
+3. Sharing. Personal use on your own Macs needs nothing more. Whoever passes a build on must pass on LICENSE, this
+   file and the notices with it and offer the complete source (SOURCE.txt in the download names the exact commit).
+   Not legal advice. The name "Iro-x" is clearly derived from "Iroi"; if a build is ever shared, the name is to be
+   reconsidered first.
+   VST is a registered trademark of Steinberg Media Technologies GmbH. Audio Units, Logic Pro and macOS are
+   trademarks of Apple Inc.
+
+Iro-x itself is released under GPL-3.0 (see LICENSE). The complete source for any binary is in this repository:
+https://github.com/particledots/Iro-X

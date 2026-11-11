@@ -1,0 +1,129 @@
+name: Build plugin (macOS)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:      # adds a "Run workflow" button in the Actions tab
+
+jobs:
+  build-macos:
+    runs-on: macos-26     # Apple silicon runner, same as the ELXAR-Two workflow
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (universal, macOS 11+)
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DIROX_BUILD_PLUGIN_TEST=ON
+
+      - name: Check the imported Iroi source is unmodified (Milestone 0 rule)
+        run: |
+          # The firmware folder must still match the commit named in SOURCE.txt until a change is listed in IROX-CHANGES.md.
+          COMMIT=$(sed -n 's/^Commit: \([0-9a-f]\{40\}\).*/\1/p' third_party/iroi-firmware/SOURCE.txt)
+          echo "Iroi commit named in SOURCE.txt: $COMMIT"
+          [ -n "$COMMIT" ] || { echo "::error::SOURCE.txt does not name a commit"; exit 1; }
+          git clone --quiet https://github.com/Befaco/Iroi /tmp/iroi-original
+          git -C /tmp/iroi-original checkout --quiet "$COMMIT"
+          if grep -q "Iro-x change" third_party/iroi-firmware/*.h third_party/iroi-firmware/*.hpp 2>/dev/null; then
+            echo "::notice::Firmware files carry marked changes; the byte-for-byte check is skipped"
+          else
+            for f in /tmp/iroi-original/*.h /tmp/iroi-original/*.hpp /tmp/iroi-original/LICENSE; do
+              cmp "$f" "third_party/iroi-firmware/$(basename "$f")" || { echo "::error::FIRMWARE file $(basename "$f") differs from Befaco/Iroi and is not marked"; exit 1; }
+            done
+            echo "all firmware files identical to Befaco/Iroi at $COMMIT"
+          fi
+
+      - name: Plugin test (the plugin code with a pretend host, saving, window picture)
+        run: |
+          cmake --build build --target Iro_x_PluginTest -j4 > plugin_test_log.txt 2>&1 || {
+            grep -E "error|Error" plugin_test_log.txt | head -8 | while IFS= read -r line; do echo "::error::PLUGIN TEST BUILD - $line"; done
+            tail -20 plugin_test_log.txt; exit 1; }
+          TEST_BIN=$(find build -type f -name Iro_x_PluginTest | head -1)
+          [ -n "$TEST_BIN" ] || { echo "::error::PLUGIN TEST program not found after the build"; exit 1; }
+          file "$TEST_BIN"
+          mkdir -p test-renders
+          set +e
+          arch -arm64 "$TEST_BIN" test-renders > plugin_test_result.txt 2>&1
+          STATUS=$?
+          set -e
+          cat plugin_test_result.txt
+          if [ $STATUS -ne 0 ] || ! grep -q "RESULT - all plugin checks passed" plugin_test_result.txt; then
+            echo "::error::PLUGIN TEST stopped with exit status $STATUS; last line - $(tail -1 plugin_test_result.txt)"
+            grep FAIL plugin_test_result.txt | while IFS= read -r line; do echo "::error::PLUGIN TEST - $line"; done
+            exit 1
+          fi
+          # Intel half through Rosetta when available. Reported, does not stop the build.
+          if arch -x86_64 /usr/bin/true 2>/dev/null; then
+            arch -x86_64 "$TEST_BIN" > plugin_test_result_intel.txt 2>&1 || true
+            tail -2 plugin_test_result_intel.txt
+            grep -q "RESULT - all plugin checks passed" plugin_test_result_intel.txt && echo "::notice::PLUGIN TEST intel (Rosetta) - all checks passed" || echo "::warning::PLUGIN TEST intel (Rosetta) did not pass - $(tail -1 plugin_test_result_intel.txt)"
+          else
+            echo "::notice::PLUGIN TEST intel - Rosetta not available on this runner, skipped"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Iro-x-test-renders
+          path: test-renders
+
+      - name: Build AU + VST3
+        run: |
+          # Compiler errors are also written as annotations (shown on the run page and readable through the API).
+          cmake --build build --target Iro_x_AU Iro_x_VST3 -j4 > build_log.txt 2>&1 || {
+            grep -E "error|Error" build_log.txt | head -8 | while IFS= read -r line; do echo "::error::BUILD: $line"; done
+            tail -20 build_log.txt; exit 1; }
+          tail -3 build_log.txt
+
+      - name: Ad-hoc sign (lets Apple silicon load an unsigned build)
+        run: |
+          for b in build/Iro_x_artefacts/Release/AU/*.component build/Iro_x_artefacts/Release/VST3/*.vst3; do
+            codesign --force --deep -s - "$b"
+          done
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp -R build/Iro_x_artefacts/Release/AU/*.component dist/
+          cp -R build/Iro_x_artefacts/Release/VST3/*.vst3 dist/
+          cp THIRD-PARTY-LICENSES.txt LICENSE README.md CHANGELOG.md dist/
+          # Where the source of this exact build is (GPL: a build must come with its source).
+          printf 'Iro-x source code\n\nThis build was made from commit\n  %s\nof the public repository\n  https://github.com/%s\n\nThe complete source of this build, including the Iroi firmware copy and the build script:\n  https://github.com/%s/tree/%s\n\nLicence: GNU GPL version 3, see LICENSE and THIRD-PARTY-LICENSES.txt.\n' "$GITHUB_SHA" "$GITHUB_REPOSITORY" "$GITHUB_REPOSITORY" "$GITHUB_SHA" > dist/SOURCE.txt
+          cat dist/SOURCE.txt
+          # The version inside the plugin must be the one in CMakeLists.txt.
+          WANT=$(sed -n 's/^project(Iro_x VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          GOT=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" dist/Iro-x.component/Contents/Info.plist)
+          echo "version wanted $WANT, in the plugin $GOT"
+          [ "$WANT" = "$GOT" ] || { echo "::error::PACKAGE version in the plugin is $GOT, expected $WANT"; exit 1; }
+          # The Audio Unit must be an EFFECT (type aufx), so Logic lists it under Audio FX.
+          AUTYPE=$(/usr/libexec/PlistBuddy -c "Print :AudioComponents:0:type" dist/Iro-x.component/Contents/Info.plist)
+          echo "Audio Unit type: $AUTYPE"
+          [ "$AUTYPE" = "aufx" ] || { echo "::error::PACKAGE Audio Unit type is $AUTYPE, expected aufx (effect)"; exit 1; }
+          cp third_party/iroi-firmware/SOURCE.txt dist/SOURCE-Iroi-firmware.txt
+          cp third_party/iroi-firmware/IROX-CHANGES.md dist/CHANGES-to-Iroi-firmware.md
+          # Both slices present, and the minimum macOS version baked into each (should say 11.0):
+          lipo -archs dist/*.component/Contents/MacOS/*
+          lipo -archs dist/*.vst3/Contents/MacOS/*
+          for a in arm64 x86_64; do echo "== $a"; lipo -thin $a dist/*.component/Contents/MacOS/* -output /tmp/slice_$a; otool -l /tmp/slice_$a | grep -A4 -E "LC_BUILD_VERSION|LC_VERSION_MIN" | grep -E "minos|version"; done
+          cp tools/install/Install-Iro-x.command tools/install/Uninstall-Iro-x.command dist/
+          chmod +x dist/Install-Iro-x.command dist/Uninstall-Iro-x.command
+          cat > dist/INSTALL.txt <<'TXT'
+          EASY INSTALL (AU for Logic, plus VST3): double-click Install-Iro-x.command in this folder.
+          It asks for your Mac password once. To remove: double-click Uninstall-Iro-x.command.
+
+          Then in Logic: Settings > Plug-in Manager > Reset & Rescan Selection.
+          Look for Iro-x in a track's Audio FX slot, under Audio Units > particledots.
+
+          Manual install instead: copy Iro-x.component to /Library/Audio/Plug-Ins/Components/
+          and Iro-x.vst3 to /Library/Audio/Plug-Ins/VST3/.
+          If macOS says it is from an unidentified developer: Terminal, then
+            xattr -dr com.apple.quarantine <the unzipped folder>
+          TXT
+          [ -x dist/Install-Iro-x.command ] || { echo "::error::PACKAGE missing Install-Iro-x.command"; exit 1; }
+          [ -x dist/Uninstall-Iro-x.command ] || { echo "::error::PACKAGE missing Uninstall-Iro-x.command"; exit 1; }
+          for f in LICENSE THIRD-PARTY-LICENSES.txt SOURCE-Iroi-firmware.txt CHANGES-to-Iroi-firmware.md SOURCE.txt README.md; do [ -s "dist/$f" ] || { echo "::error::PACKAGE missing $f"; exit 1; }; done
+          ls -la dist
+          ditto -c -k --keepParent dist Iro-x-macOS.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Iro-x-macOS
+          path: Iro-x-macOS.zip

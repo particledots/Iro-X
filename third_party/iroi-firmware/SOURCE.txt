@@ -1,0 +1,7 @@
+Imported from https://github.com/Befaco/Iroi
+Commit: e8b8ddac99bb948d12165a6c3d1b8ead060c8b53 (Iroi firmware 1.0.1, "Merge pull request #1 from duddex/patch-1")
+Imported: 2026-11-10 (Milestone 0, UNMODIFIED: every file below is byte-identical to that commit).
+Included: all 30 files of the repository (the effects engine headers, Iroi_1_0_1Patch.hpp, LICENSE, README.md, CHANGELOG, TODO).
+Not included, because Befaco's repository does not contain them: the Rebel Technology OpenWare headers the engine
+needs (Patch.h, AudioBuffer / FloatArray, SmoothValue.h, the oscillators and filters, MidiMessage.h and others) and the
+Mutable Instruments code (stmlib, Plaits, Rings) the engine adapts. See IROX-CHANGES.md.
