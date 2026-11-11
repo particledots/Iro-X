@@ -8,8 +8,7 @@ Iro-x is an effect: it processes the audio of a Logic track. It makes no sound b
 
 ## Status
 Version 0.2.0, Milestone 1 (the effects run): the Iroi engine processes the audio of the track, every control is in a
-rough window and is a parameter Logic can automate and save. Milestone 0 passed in Logic on the M4 Mac mini; the
-Milestone 1 test in Logic is still to be done (see Test history). Not yet in Milestone 1: the randomiser, Logic's
+rough window and is a parameter Logic can automate and save. Milestones 0 and 1 passed in Logic on the M4 Mac mini (see Test history). Not yet in Milestone 1: the randomiser, Logic's
 tempo for tempo-synced parts, the tail length, the final look (all Milestone 2).
 
 ## Install
@@ -52,4 +51,4 @@ nothing until the randomiser arrives in Milestone 2.
 - Milestone 0, Nov 10, 2026: automatic plugin test passes (23 checks: effect type, stereo and mono layouts, audio
   unchanged at 44.1, 48 and 96 kHz, saving and loading, window drawn). 
 - Milestone 0, Nov 11, 2026: test in Logic 11.2 on the M4 Mac mini (macOS Tahoe): passed, 8 of 8 checks (install, appears and loads under Audio FX, audio unchanged, window text correct, survives save and reopen, uninstall removes it). Intel Mac not tested.
-- Milestone 1, Nov 11, 2026: engine test in the workspace (x86, with address and undefined-behaviour checks, and ARM64): all checks passed (resampler, every effect, 40 s random-settings run at 44.1, 48 and 96 kHz, instances independent). Automatic plugin test: 48 checks passed. Test in Logic: pending.
+- Milestone 1, Nov 11, 2026: engine test in the workspace (x86, with address and undefined-behaviour checks, and ARM64): all checks passed (resampler, every effect, 40 s random-settings run at 44.1, 48 and 96 kHz, instances independent). Automatic plugin test: 48 checks passed. Test in Logic 11.2 on the M4 Mac mini (macOS Tahoe), Nov 11, 2026: passed, 15 of 15 checks (install and rescan, window, clean playback, Filter with all four modes and four chain positions, Resonator, Echo, Ambience including Spacetime at both ends without noise or crash, Modulation with all seven types, Input and Output level, Logic automation with clear names, settings restored after save and reopen, three instances independent, 44.1 and 96 kHz, window sizes 75/125/150 % and a mono track). Note: the Modulation moves the sound but the faders do not move on screen; that is how it works (the modulation is inside the engine) and is left as is. Intel Mac not tested (not requested).

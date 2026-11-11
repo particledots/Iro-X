@@ -15,7 +15,7 @@
   end of the ambience buffer and a comb-filter read one sample before its buffer. Known and accepted: a few kilobytes
   per plugin instance are never given back by the firmware.
 - Workflow: file-by-file firmware check, engine test (Apple silicon and Intel), WAV files as an artifact.
-- Result: pending (Logic 11.2 on the M4 Mac mini).
+- Result: passed on Nov 11, 2026 in Logic 11.2 on the M4 Mac mini (macOS Tahoe). All 15 checks OK. Note from the test: the modulation changes the sound but the faders on screen do not follow it (the modulation runs inside the engine); left as is. Intel Mac not tested (not requested).
 
 ## 0.1.0: Milestone 0 (empty effect)
 - Empty Audio Unit effect (type `aufx`, shows under Audio FX in Logic) and VST3 effect. Stereo in, stereo out; a mono
